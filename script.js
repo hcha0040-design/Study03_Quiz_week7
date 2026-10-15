@@ -70,9 +70,19 @@ const QuizCore = {
     return nowMs - startMs >= QuizCore.SPEED_LIMIT_MS;
   },
 
-  // 순위표를 두는 모드와 표마다 남길 기록 수.
+  // 순위표는 모드(스피드, 힌트) × 카테고리마다 하나씩, 모두 8개다. 표마다 상위 5건을 남긴다.
   BOARD_MODES: ['speed', 'hint'],
-  BOARD_SIZE: 10,
+  BOARD_SIZE: 5,
+
+  // 표 하나를 가리키는 키. 예: 'speed:science'
+  boardKey(mode, categoryId) {
+    return `${mode}:${categoryId}`;
+  },
+
+  // 표 8개의 키를 화면에 놓을 순서(스피드 4개 → 힌트 4개)로 돌려준다.
+  boardKeys(categories) {
+    return QuizCore.BOARD_MODES.flatMap(mode => categories.map(c => QuizCore.boardKey(mode, c.id)));
+  },
 
   // 앞뒤 공백을 뺀 이름. 1~10자가 아니거나 문자열이 아니면 null.
   normalizeName(text) {
@@ -91,39 +101,37 @@ const QuizCore = {
     }
     if (data === null || typeof data !== 'object' || Array.isArray(data)) return {};
 
-    const categoryIds = CATEGORIES.map(c => c.id);
     const isRecord = r => r !== null && typeof r === 'object'
       && QuizCore.normalizeName(r.name) !== null
-      && categoryIds.includes(r.categoryId)
       && Number.isInteger(r.halfPoints) && r.halfPoints >= 0 && r.halfPoints <= 20
       && typeof r.date === 'string' && !Number.isNaN(Date.parse(r.date));
 
     const board = {};
-    for (const mode of QuizCore.BOARD_MODES) {
-      if (!Array.isArray(data[mode])) continue;
-      const records = data[mode].filter(isRecord).slice(0, QuizCore.BOARD_SIZE)
-        .map(r => ({ name: QuizCore.normalizeName(r.name), categoryId: r.categoryId, halfPoints: r.halfPoints, date: r.date }));
-      if (records.length > 0) board[mode] = records;
+    for (const key of QuizCore.boardKeys(CATEGORIES)) {
+      if (!Array.isArray(data[key])) continue;
+      const records = data[key].filter(isRecord).slice(0, QuizCore.BOARD_SIZE)
+        .map(r => ({ name: QuizCore.normalizeName(r.name), halfPoints: r.halfPoints, date: r.date }));
+      if (records.length > 0) board[key] = records;
     }
     return board;
   },
 
-  // 새 기록을 같은 점수의 기존 기록들 바로 아래에 끼워 넣는다. 10위 밖이면 rank는 null이고 표는 그대로다.
-  addRecord(board, mode, { name, categoryId, halfPoints, date }) {
-    const list = board[mode] || [];
+  // 새 기록을 같은 점수의 기존 기록들 바로 아래에 끼워 넣는다. 5위 밖이면 rank는 null이고 표는 그대로다.
+  addRecord(board, key, { name, halfPoints, date }) {
+    const list = board[key] || [];
     let pos = list.findIndex(r => r.halfPoints < halfPoints);
     if (pos === -1) pos = list.length;
     if (pos >= QuizCore.BOARD_SIZE) return { board: { ...board }, rank: null };
     const next = list.slice();
-    next.splice(pos, 0, { name, categoryId, halfPoints, date });
-    return { board: { ...board, [mode]: next.slice(0, QuizCore.BOARD_SIZE) }, rank: pos + 1 };
+    next.splice(pos, 0, { name, halfPoints, date });
+    return { board: { ...board, [key]: next.slice(0, QuizCore.BOARD_SIZE) }, rank: pos + 1 };
   },
 
-  // ISO 문자열을 로컬 시각 'YYYY.MM.DD HH:mm'으로 바꾼다.
+  // ISO 문자열을 로컬 날짜 'YYYY-MM-DD'로 바꾼다.
   formatDate(isoString) {
     const d = new Date(isoString);
     const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   },
 
   // 문항 데이터 검사(PRD 5.2, 7.1). 오류 메시지 배열을 돌려주고, 문제가 없으면 빈 배열이다.
@@ -286,11 +294,8 @@ let selectedCategory = null;
 let game = null;
 let timerId = null;
 let board = {};
-let storageOk = true;
-// 마지막으로 쓴 이름. 저장이 막혀도 이번 접속 동안은 기억한다.
+// 마지막으로 저장한 이름. 결과 화면의 이름 입력칸을 미리 채운다.
 let lastPlayerName = '';
-// 방금 끝낸 판의 기록 { mode, rank }. 순위권 밖이면 rank는 null, 기록하지 않은 판이면 lastRecord가 null.
-let lastRecord = null;
 
 function el(id) {
   return document.getElementById(id);
@@ -339,18 +344,6 @@ function renderModes() {
     }
     list.appendChild(btn);
   });
-
-  el('player-name').value = lastPlayerName;
-  updateNameLock();
-}
-
-// 이름이 비었거나 공백뿐이면 순위표에 오르는 스피드·힌트 버튼만 잠근다. 연습은 이름 없이 시작한다.
-function updateNameLock() {
-  const locked = QuizCore.normalizeName(el('player-name').value) === null;
-  el('mode-list').querySelectorAll('[data-mode]').forEach((btn) => {
-    if (btn.dataset.mode !== 'practice') btn.disabled = locked;
-  });
-  el('name-hint').hidden = !locked;
 }
 
 function renderStart() {
@@ -368,15 +361,14 @@ function renderStart() {
 // ---- 문제 화면 ----
 
 // keptScore: 다시 풀기 판에서 그대로 보여 줄 처음 판의 점수 { halfPoints, count }. 일반 판은 null.
-// playerName: 스피드·힌트 판에서 순위표에 올릴 이름. 연습 판은 null.
-function startGame({ mode, categoryId, questionList, isRetry, keptScore = null, playerName = null }) {
+function startGame({ mode, categoryId, questionList, isRetry, keptScore = null }) {
   stopTimer();
   game = {
     mode,
     categoryId,
     isRetry,
     keptScore,
-    playerName,
+    saved: false, // 결과 화면에서 기록을 저장했는지. [기록 저장]을 두 번 눌러도 한 번만 저장한다.
     items: QuizCore.prepareItems(questionList, Math.random),
     index: 0,
     phase: 'answering',
@@ -569,35 +561,44 @@ function showResult() {
   // 다시 풀기는 연습 모드에서 틀린 문항이 있을 때만(스피드·힌트는 하지 않음).
   el('btn-retry').hidden = !(game.mode === 'practice' && QuizCore.wrongQuestionIds(game.results).length > 0);
 
-  // showResult는 phase가 'feedback'일 때만 불리므로 판마다 한 번만 기록된다.
-  lastRecord = null;
-  el('result-rank').hidden = true;
-  if (game.mode !== 'practice' && !game.isRetry) {
-    const { rank } = recordResult();
-    lastRecord = { mode: game.mode, rank };
-    const category = CATEGORIES.find((c) => c.id === game.categoryId);
-    // 이름은 사용자가 입력한 값이므로 textContent로 넣는다.
-    el('result-rank').textContent = rank !== null
-      ? `${game.playerName} 님의 이번 기록: ${MODES[game.mode].name} ${rank}위 (${category ? category.name : ''})`
-      : `순위권 밖 (10위 점수: ${QuizCore.formatScore(board[game.mode][QuizCore.BOARD_SIZE - 1].halfPoints)})`;
-    el('result-rank').hidden = false;
-  }
-  el('result-storage-warning').hidden = storageOk;
+  // 스피드·힌트 판(다시 풀기 판 제외)만 점수 아래에 이름 입력칸과 [기록 저장]을 보인다.
+  el('save-form').hidden = !canSave();
+  el('save-error').hidden = true;
+  el('player-name').value = lastPlayerName;
+  updateSaveButton();
 
   showScreen('result');
 }
 
-// 이번 판을 순위표에 넣고 저장한다. 저장이 한 번이라도 실패하면 storageOk는 false로 남는다.
-function recordResult() {
-  const { board: next, rank } = QuizCore.addRecord(board, game.mode, {
-    name: game.playerName,
-    categoryId: game.categoryId,
+function canSave() {
+  return !!game && game.phase === 'done' && game.mode !== 'practice' && !game.isRetry;
+}
+
+// 이름이 비었거나 공백뿐이면 [기록 저장]을 잠근다.
+function updateSaveButton() {
+  el('btn-save').disabled = !canSave() || game.saved || QuizCore.normalizeName(el('player-name').value) === null;
+}
+
+// 이번 판을 그 모드·카테고리 표에 넣고 저장한 뒤 순위표 화면으로 간다.
+// 저장에 실패하면 "기록을 저장할 수 없음"을 보이고 결과 화면에 머문다.
+function saveRecord() {
+  if (!canSave() || game.saved) return;
+  const name = QuizCore.normalizeName(el('player-name').value);
+  if (name === null) return;
+  const { board: next } = QuizCore.addRecord(board, QuizCore.boardKey(game.mode, game.categoryId), {
+    name,
     halfPoints: totalHalfPoints(),
     date: new Date().toISOString(),
   });
+  lastPlayerName = name;
+  store.savePlayerName(name);
+  if (!store.saveBoard(next)) {
+    el('save-error').hidden = false;
+    return;
+  }
   board = next;
-  storageOk = store.saveBoard(board) && storageOk;
-  return { rank };
+  game.saved = true;
+  openBoard();
 }
 
 // 문항마다 "문제 — 판정" 한 줄. 문제 글은 textContent로 넣는다.
@@ -615,46 +616,51 @@ function renderResultList() {
 
 // ---- 순위표 화면 ----
 
-// highlight: 방금 세운 기록 { mode, rank }. 순위권 밖(rank null)이거나 null이면 강조하지 않는다.
-function openBoard(highlight) {
-  renderBoard(highlight);
+function openBoard() {
+  renderBoard();
   showScreen('board');
 }
 
-function renderBoard(highlight = null) {
-  el('board-storage-warning').hidden = storageOk;
+// 표 8개(스피드 · 카테고리 4개, 힌트 · 카테고리 4개)를 차례로 그린다.
+function renderBoard() {
+  const list = el('board-list');
+  list.textContent = '';
   QuizCore.BOARD_MODES.forEach((mode) => {
-    const box = el('board-' + mode);
-    box.textContent = '';
-    const records = board[mode] || [];
-    if (records.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = '아직 기록이 없습니다';
-      box.appendChild(empty);
-      return;
-    }
+    CATEGORIES.forEach((c) => {
+      const section = document.createElement('section');
+      section.className = 'board-section';
+      const title = document.createElement('h3');
+      title.textContent = `${MODES[mode].name} · ${c.name}`;
+      section.appendChild(title);
 
-    const table = document.createElement('table');
-    table.className = 'board-table';
-    const headRow = table.createTHead().insertRow();
-    ['순위', '이름', '카테고리', '점수', '날짜'].forEach((text) => {
-      const th = document.createElement('th');
-      th.scope = 'col';
-      th.textContent = text;
-      headRow.appendChild(th);
-    });
-    const body = table.createTBody();
-    records.forEach((r, i) => {
-      const row = body.insertRow();
-      if (highlight && highlight.mode === mode && highlight.rank === i + 1) row.className = 'is-highlight';
-      const category = CATEGORIES.find((c) => c.id === r.categoryId);
-      // 이름은 사용자가 입력한 값이므로 모든 칸을 textContent로 넣는다.
-      [String(i + 1), r.name, category ? category.name : '', QuizCore.formatScore(r.halfPoints), QuizCore.formatDate(r.date)]
-        .forEach((text) => {
-          row.insertCell().textContent = text;
+      const records = board[QuizCore.boardKey(mode, c.id)] || [];
+      if (records.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'board-empty';
+        empty.textContent = '기록 없음';
+        section.appendChild(empty);
+      } else {
+        const table = document.createElement('table');
+        table.className = 'board-table';
+        const headRow = table.createTHead().insertRow();
+        ['순위', '이름', '점수', '날짜'].forEach((text) => {
+          const th = document.createElement('th');
+          th.scope = 'col';
+          th.textContent = text;
+          headRow.appendChild(th);
         });
+        const body = table.createTBody();
+        records.forEach((r, i) => {
+          const row = body.insertRow();
+          // 이름은 사용자가 입력한 값이므로 모든 칸을 textContent로 넣는다.
+          [String(i + 1), r.name, QuizCore.formatScore(r.halfPoints), QuizCore.formatDate(r.date)].forEach((text) => {
+            row.insertCell().textContent = text;
+          });
+        });
+        section.appendChild(table);
+      }
+      list.appendChild(section);
     });
-    box.appendChild(table);
   });
 }
 
@@ -674,24 +680,14 @@ function init() {
     showScreen('mode');
   });
   el('btn-back').addEventListener('click', goHome);
-  el('player-name').addEventListener('input', updateNameLock);
   el('mode-list').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-mode]');
-    if (!btn || btn.disabled || !selectedCategory) return;
-    const mode = btn.dataset.mode;
-    let playerName = null;
-    if (mode !== 'practice') {
-      playerName = QuizCore.normalizeName(el('player-name').value);
-      if (playerName === null) return;
-      lastPlayerName = playerName;
-      store.savePlayerName(playerName);
-    }
+    if (!btn || !selectedCategory) return;
     startGame({
-      mode,
+      mode: btn.dataset.mode,
       categoryId: selectedCategory,
       questionList: QuizCore.questionsByCategory(QUESTIONS, selectedCategory),
       isRetry: false,
-      playerName,
     });
   });
   el('choice-list').addEventListener('click', (e) => {
@@ -735,17 +731,19 @@ function init() {
       categoryId: game.categoryId,
       questionList: QuizCore.questionsByCategory(QUESTIONS, game.categoryId),
       isRetry: false,
-      playerName: game.playerName,
     });
   });
   el('btn-home').addEventListener('click', goHome);
-  el('btn-board').addEventListener('click', () => openBoard(lastRecord));
-  el('btn-mode-board').addEventListener('click', () => openBoard(null));
+  el('player-name').addEventListener('input', updateSaveButton);
+  el('save-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveRecord();
+  });
+  el('btn-board-open').addEventListener('click', openBoard);
   el('btn-board-home').addEventListener('click', goHome);
 
-  const loaded = store.loadBoard();
-  board = loaded.board;
-  storageOk = loaded.ok;
+  // 저장소가 막혔거나 값이 깨졌으면 빈 표로 시작한다.
+  board = store.loadBoard().board;
   lastPlayerName = store.loadPlayerName();
   goHome();
 }
