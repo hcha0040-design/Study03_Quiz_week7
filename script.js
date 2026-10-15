@@ -613,6 +613,51 @@ function renderResultList() {
   });
 }
 
+// ---- 순위표 화면 ----
+
+// highlight: 방금 세운 기록 { mode, rank }. 순위권 밖(rank null)이거나 null이면 강조하지 않는다.
+function openBoard(highlight) {
+  renderBoard(highlight);
+  showScreen('board');
+}
+
+function renderBoard(highlight = null) {
+  el('board-storage-warning').hidden = storageOk;
+  QuizCore.BOARD_MODES.forEach((mode) => {
+    const box = el('board-' + mode);
+    box.textContent = '';
+    const records = board[mode] || [];
+    if (records.length === 0) {
+      const empty = document.createElement('p');
+      empty.textContent = '아직 기록이 없습니다';
+      box.appendChild(empty);
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'board-table';
+    const headRow = table.createTHead().insertRow();
+    ['순위', '이름', '카테고리', '점수', '날짜'].forEach((text) => {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = text;
+      headRow.appendChild(th);
+    });
+    const body = table.createTBody();
+    records.forEach((r, i) => {
+      const row = body.insertRow();
+      if (highlight && highlight.mode === mode && highlight.rank === i + 1) row.className = 'is-highlight';
+      const category = CATEGORIES.find((c) => c.id === r.categoryId);
+      // 이름은 사용자가 입력한 값이므로 모든 칸을 textContent로 넣는다.
+      [String(i + 1), r.name, category ? category.name : '', QuizCore.formatScore(r.halfPoints), QuizCore.formatDate(r.date)]
+        .forEach((text) => {
+          row.insertCell().textContent = text;
+        });
+    });
+    box.appendChild(table);
+  });
+}
+
 function quitGame() {
   stopTimer();
   game = null;
@@ -694,6 +739,9 @@ function init() {
     });
   });
   el('btn-home').addEventListener('click', goHome);
+  el('btn-board').addEventListener('click', () => openBoard(lastRecord));
+  el('btn-mode-board').addEventListener('click', () => openBoard(null));
+  el('btn-board-home').addEventListener('click', goHome);
 
   const loaded = store.loadBoard();
   board = loaded.board;

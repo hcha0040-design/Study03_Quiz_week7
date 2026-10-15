@@ -211,6 +211,60 @@ button:disabled {
   font-weight: 700;
 }
 
+/* 순위표: 넓은 화면에서 나란히, 640px보다 좁으면 위아래로. 표 두 개가 들어가도록 이 화면에서만 폭을 넓힌다. */
+#app:has(#screen-board:not([hidden])) {
+  max-width: 60rem;
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+
+@media (min-width: 640px) {
+  .board-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.board-section {
+  min-width: 0;
+}
+
+.board-section h3 {
+  margin: 0 0 0.5rem;
+}
+
+.board-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.board-table th,
+.board-table td {
+  padding: 0.375rem 0.25rem;
+  border-bottom: 1px solid #d1d5db;
+  text-align: left;
+  vertical-align: top;
+  word-break: keep-all;
+}
+
+/* 이름은 띄어쓰기 없이 10자까지 올 수 있어서 어디서든 줄을 바꾼다. 날짜는 공백에서만 줄을 바꾼다. */
+.board-table td:nth-child(2) {
+  overflow-wrap: anywhere;
+}
+
+.board-table th {
+  white-space: nowrap;
+}
+
+.board-table tr.is-highlight td {
+  font-weight: 700;
+}
+
 .is-highlight {
   background: #fef9c3;
 }
