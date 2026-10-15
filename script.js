@@ -108,6 +108,24 @@ const QuizCore = {
     return board;
   },
 
+  // 새 기록을 같은 점수의 기존 기록들 바로 아래에 끼워 넣는다. 10위 밖이면 rank는 null이고 표는 그대로다.
+  addRecord(board, mode, { name, categoryId, halfPoints, date }) {
+    const list = board[mode] || [];
+    let pos = list.findIndex(r => r.halfPoints < halfPoints);
+    if (pos === -1) pos = list.length;
+    if (pos >= QuizCore.BOARD_SIZE) return { board: { ...board }, rank: null };
+    const next = list.slice();
+    next.splice(pos, 0, { name, categoryId, halfPoints, date });
+    return { board: { ...board, [mode]: next.slice(0, QuizCore.BOARD_SIZE) }, rank: pos + 1 };
+  },
+
+  // ISO 문자열을 로컬 시각 'YYYY.MM.DD HH:mm'으로 바꾼다.
+  formatDate(isoString) {
+    const d = new Date(isoString);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  },
+
   // 문항 데이터 검사(PRD 5.2, 7.1). 오류 메시지 배열을 돌려주고, 문제가 없으면 빈 배열이다.
   // 잘못된 모양의 항목이 있어도 던지지 않고 메시지로 알린다.
   validateQuestions(questions, categories) {

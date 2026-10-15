@@ -168,6 +168,37 @@ test('parseBoard: 표마다 앞의 10개까지만', () => {
   assertEqual(QuizCore.parseBoard(text).speed.length, 10);
 });
 
+// ===== 3단계: 기록 추가와 날짜 =====
+const rec = (name, halfPoints, categoryId = 'science') => ({ name, categoryId, halfPoints, date: '2026-10-08T05:03:00.000Z' });
+const fullSpeed = () => ({ speed: [20, 19, 18, 17, 16, 15, 14, 13, 12, 11].map((p, i) => rec(`P${i}`, p)) });
+test('addRecord: 빈 표에 이름·카테고리와 함께 1위', () => {
+  const r = QuizCore.addRecord({}, 'speed', rec('민지', 18, 'korean-history'));
+  assertEqual(r, { board: { speed: [rec('민지', 18, 'korean-history')] }, rank: 1 });
+});
+test('addRecord: 동점이면 먼저 세운 기록이 위', () => {
+  const r = QuizCore.addRecord({ speed: [rec('A', 18)] }, 'speed', rec('B', 18, 'arts-culture'));
+  assertEqual(r.board.speed.map(x => x.name), ['A', 'B']); assertEqual(r.rank, 2);
+});
+test('addRecord: 11번째는 잘리고 다른 모드 표와 입력은 그대로', () => {
+  const full = { ...fullSpeed(), hint: [rec('H', 2)] };
+  const before = JSON.stringify(full);
+  const r = QuizCore.addRecord(full, 'speed', rec('N', 12));
+  assertEqual(r.rank, 10);
+  assertEqual(r.board.speed.map(x => x.halfPoints), [20, 19, 18, 17, 16, 15, 14, 13, 12, 12]);
+  assertEqual(r.board.speed[9].name, 'N');
+  assertEqual(r.board.hint, [rec('H', 2)]); assertEqual(JSON.stringify(full), before);
+});
+test('addRecord: 꽉 찬 표에서 10위와 동점이거나 낮으면 순위권 밖', () => {
+  const full = fullSpeed();
+  for (const p of [11, 0]) {
+    const r = QuizCore.addRecord(full, 'speed', rec('N', p));
+    assertEqual(r.rank, null); assertEqual(r.board, full);
+  }
+});
+test('formatDate: 로컬 시각', () => {
+  assertEqual(QuizCore.formatDate(new Date(2026, 9, 8, 14, 3).toISOString()), '2026.10.08 14:03');
+});
+
 // ===== 결과 표시 =====
 window.addEventListener('load', () => {
   const passed = results.filter(r => r.ok).length;
