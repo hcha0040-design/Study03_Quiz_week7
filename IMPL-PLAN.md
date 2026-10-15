@@ -24,18 +24,18 @@
 - 폭 360px에서 가로 스크롤이 생기지 않는다.
 - 출처 링크는 `target="_blank" rel="noopener"`다.
 - localStorage 키는 `quiz.leaderboard.v1`, `quiz.playerName.v1`이고, 읽기·쓰기 모두 `try/catch` 안에서 한다.
-- 화면 문구는 PRD 그대로 쓴다: "순위표에 기록되지 않음", "정답입니다", "오답입니다", "시간 초과", "순위표에 올릴 이름", "이름을 입력하면 시작할 수 있습니다", "아직 기록이 없습니다", "이 브라우저에서는 기록을 저장할 수 없습니다", 모드 규칙 세 줄(PRD 3.2).
-- 순위표는 모드별 표 2개(스피드, 힌트), 표마다 상위 10개다. 저장 형식은 `{ speed: Record[], hint: Record[] }`, `Record = { name, categoryId, halfPoints, date }`다(PRD 5.3).
-- 하지 않는 것(PRD 10장): 서버·로그인, 효과음·애니메이션, 시간 보너스, 스피드·힌트 모드의 다시 풀기, [기록 지우기], 카테고리별 순위표.
+- 화면 문구는 PRD 그대로 쓴다: "순위표에 기록되지 않음", "정답입니다", "오답입니다", "시간 초과", "순위표 보기", "이름 (1~10자)", "기록 저장", "기록 없음", "기록을 저장할 수 없음", 모드 규칙 세 줄(PRD 3.2).
+- 순위표는 모드 × 카테고리 표 8개(스피드·힌트 × 카테고리 4개), 표마다 상위 5건이다. 저장 형식은 `{ 'speed:science': Record[], ... }`(키는 `모드:카테고리 id`), `Record = { name, halfPoints, date }`다(PRD 5.3).
+- 하지 않는 것(PRD 10장): 서버·로그인, 효과음·애니메이션, 시간 보너스, 스피드·힌트 모드의 다시 풀기, [기록 지우기].
 
 ## Review Focus
 
 PRD가 직접 말하지는 않지만 실제로 쓰다 보면 부딪히기 쉬운 입력과 상황이다. 각 항목을 맡은 작업에 검사를 넣어 두었다.
 
-1. **보기, [다음], [결과 보기]를 빠르게 두 번 누르는 경우** → 한 문항에 결과가 하나만 남고, 문제를 건너뛰지 않으며, 기록도 한 번만 저장되어야 한다. (작업 6, 작업 16)
+1. **보기, [다음], [결과 보기], [기록 저장]을 빠르게 두 번 누르는 경우** → 한 문항에 결과가 하나만 남고, 문제를 건너뛰지 않으며, 기록도 한 번만 저장되어야 한다. (작업 6, 작업 16)
 2. **15초가 끝나는 순간에 보기를 누르거나, 다른 탭에 갔다가 돌아오는 경우** → 결과는 하나만 남고, 돌아오자마자 "시간 초과"가 떠야 한다. (작업 10)
 3. **다시 풀기 판에서 틀린 문항이 1개뿐이거나, 다시 풀기 판에서 [같은 모드 다시]를 누르는 경우** → 진행은 `1 / 1`이고, 점수는 처음 판의 점수 그대로여야 한다. 다시 하기는 10문항짜리 일반 판으로 시작해야 한다. (작업 12)
-4. **10개가 꽉 찬 표에서 10위와 같은 점수를 내는 경우** → 순위권 밖으로 처리하고 표는 그대로 둔다. "순위권 밖 (10위 점수: N)"이 나와야 한다. (작업 14)
+4. **5건이 꽉 찬 표에서 5위와 같은 점수를 내는 경우** → 표에 넣지 않고 표는 그대로 둔다(동점이면 먼저 저장한 기록이 위). (작업 14)
 5. **저장된 순위표에 모르는 키, 배열이 아닌 값, 카테고리가 잘못된 기록이 섞여 있는 경우** → 그 키나 기록만 버리고 나머지는 살려야 한다. (작업 13)
 
 ## 파일 구조
@@ -51,7 +51,7 @@ PRD가 직접 말하지는 않지만 실제로 쓰다 보면 부딪히기 쉬운
 
 **자동 검사 실행 방법**(모든 작업 공통): 브라우저로 `tests/test.html`을 연다(PowerShell: `Start-Process tests\test.html`, 에이전트는 내장 브라우저로 `file:///C:/study03_Quiz/tests/test.html`). 맨 위 요약 줄이 `통과 N · 실패 0`이면 통과다. 실패한 검사는 목록에 이유와 함께 빨간색으로 나온다.
 
-**상태 객체 확장**: PRD 4.5의 상태에 두 가지를 더한다. `phase`에 `'done'`(결과 화면으로 넘어간 뒤 — 두 번 눌러도 기록이 한 번만 저장되게 하려고), 그리고 `playerName`(3단계, 스피드·힌트 판의 이름)이다.
+**상태 객체 확장**: PRD 4.5의 상태에 두 가지를 더한다. `phase`에 `'done'`(결과 화면으로 넘어간 뒤 — 두 번 눌러도 기록이 한 번만 저장되게 하려고), 그리고 `saved`(3단계, 결과 화면에서 [기록 저장]을 이미 눌렀는지)다.
 
 ---
 
@@ -497,16 +497,18 @@ test('remainingSeconds / isTimedOut 경계값', () => {
 
 # 3단계: 점수 저장과 순위표
 
+> 2026-10-15: 노션 5.6.2(구현 3단계 결과의 브라우저 확인)에 맞춰 이 단계를 고쳤다. 순위표는 모드 × 카테고리 표 8개, 표마다 상위 5건이고, 이름은 스피드·힌트 결과 화면에서 넣고 [기록 저장]으로 저장한다.
+
 ## 만들 것
 
-- 3단계 `QuizCore`: `normalizeName`, `parseBoard`, `addRecord`, 그리고 날짜 표시용 `formatDate`
+- 3단계 `QuizCore`: `boardKey`, `boardKeys`, `normalizeName`, `parseBoard`, `addRecord`, 그리고 날짜 표시용 `formatDate`
 - `createQuizStore(getStorage)`: localStorage 읽기·쓰기를 `try/catch`로 감싼 저장소
-- 모드 선택 화면의 이름 입력칸(마지막 이름 미리 채우기, 비어 있으면 스피드·힌트 버튼 잠금)
-- 판이 끝나면 기록 저장, 결과 화면의 순위 또는 "순위권 밖" 표시
-- 순위표 화면(모드별 표 2개 — 스피드, 힌트 — 표마다 상위 10개, 칸에 카테고리, 방금 세운 기록 강조, [처음으로])
+- 스피드·힌트 결과 화면의 이름 입력칸과 [기록 저장](마지막 이름 미리 채우기, 비어 있으면 [기록 저장] 잠금)
+- 순위표 화면(표 8개 — 스피드 · 카테고리 4개, 힌트 · 카테고리 4개 — 표마다 상위 5건, 칸은 순위·이름·점수·날짜, [처음으로])
+- 시작 화면 맨 아래의 [순위표 보기]
 - 저장할 수 없는 브라우저와 깨진 저장값 처리
 
-[기록 지우기]와 카테고리별 순위표는 만들지 않는다(PRD 10장).
+[기록 지우기]는 만들지 않는다(PRD 10장).
 
 ## 완료 기준
 
@@ -514,14 +516,14 @@ test('remainingSeconds / isTimedOut 경계값', () => {
 - [ ] 아래 "3단계 브라우저 확인 항목"을 모두 확인했다.
 - [ ] 연습·스피드·힌트 모드를 한 판씩 다시 해서 1·2단계 기능이 망가지지 않았다.
 
-### Task 13: 이름 정리와 저장값 검사
+### Task 13: 이름 정리, 표 키, 저장값 검사
 
 **Files:**
 - Modify: `script.js`(QuizCore), `tests/tests.js`
 
 **Interfaces:**
 - Consumes: 전역 `CATEGORIES`(`questions.js`)
-- Produces: `QuizCore.BOARD_MODES = ['speed', 'hint']`, `QuizCore.BOARD_SIZE = 10`, `normalizeName(text) -> string | null`, `parseBoard(text) -> { speed?: Record[], hint?: Record[] }`. `Record`는 `{ name, categoryId, halfPoints, date }`이고, `categoryId`는 `CATEGORIES`의 id다.
+- Produces: `QuizCore.BOARD_MODES = ['speed', 'hint']`, `QuizCore.BOARD_SIZE = 5`, `boardKey(mode, categoryId) -> 'speed:science'`, `boardKeys(categories) -> string[8]`(스피드 4개 → 힌트 4개), `normalizeName(text) -> string | null`, `parseBoard(text) -> { [key]: Record[] }`. `Record`는 `{ name, halfPoints, date }`다.
 
 - [ ] **Step 1: 실패하는 검사를 쓴다**
 
@@ -531,30 +533,35 @@ test('normalizeName', () => {
   assertEqual(['', '   ', '가'.repeat(11), null].map(QuizCore.normalizeName), [null, null, null, null]);
   assertEqual(QuizCore.normalizeName('가'.repeat(10)), '가'.repeat(10));
 });
-const OK = { name: '민지', categoryId: 'science', halfPoints: 18, date: '2026-10-08T05:03:00.000Z' };
+test('boardKey와 표 8개', () => {
+  assertEqual(QuizCore.boardKey('speed', 'science'), 'speed:science');
+  assertEqual(QuizCore.boardKeys(CATEGORIES).length, 8);
+  assertEqual(QuizCore.boardKeys(CATEGORIES).slice(0, 2), ['speed:korean-history', 'speed:world-geography']);
+  assertEqual(QuizCore.boardKeys(CATEGORIES)[4], 'hint:korean-history');
+});
+const OK = { name: '민지', halfPoints: 18, date: '2026-10-08T05:03:00.000Z' };
 test('parseBoard: 깨진 값은 빈 표', () => {
-  for (const t of ['{broken', null, 'null', '[]', '"x"', '3']) assertEqual(QuizCore.parseBoard(t), {}, String(t));
+  for (const t of ['{broken', '{깨짐', null, 'null', '[]', '"x"', '3']) assertEqual(QuizCore.parseBoard(t), {}, String(t));
 });
 test('parseBoard: 형식이 맞는 항목만 살린다', () => {
-  const text = JSON.stringify({ speed: [OK, { ...OK, name: undefined }, { ...OK, name: '가'.repeat(11) }, { ...OK, name: '' },
-    { ...OK, categoryId: undefined }, { ...OK, categoryId: 'music' }, { ...OK, halfPoints: 1.5 }, { ...OK, halfPoints: 21 },
-    { ...OK, date: 'x' }] });
-  assertEqual(QuizCore.parseBoard(text), { speed: [OK] });
+  const text = JSON.stringify({ 'speed:science': [OK, { ...OK, name: undefined }, { ...OK, name: '가'.repeat(11) }, { ...OK, name: '' },
+    { ...OK, halfPoints: 1.5 }, { ...OK, halfPoints: 21 }, { ...OK, date: 'x' }, null] });
+  assertEqual(QuizCore.parseBoard(text), { 'speed:science': [OK] });
 });
 test('parseBoard: 모르는 키와 배열 아닌 값은 그 키만 버린다', () => {
-  const text = JSON.stringify({ hint: [OK], practice: [OK], 'science:speed': [OK], speed: 'x' });
-  assertEqual(QuizCore.parseBoard(text), { hint: [OK] });
+  const text = JSON.stringify({ 'hint:science': [OK], speed: [OK], 'practice:science': [OK], 'speed:music': [OK], 'science:speed': [OK], 'speed:korean-history': 'x' });
+  assertEqual(QuizCore.parseBoard(text), { 'hint:science': [OK] });
 });
-test('parseBoard: 표마다 앞의 10개까지만', () => {
-  const text = JSON.stringify({ speed: Array.from({ length: 12 }, () => OK) });
-  assertEqual(QuizCore.parseBoard(text).speed.length, 10);
+test('parseBoard: 표마다 앞의 5개까지만', () => {
+  const text = JSON.stringify({ 'speed:science': Array.from({ length: 7 }, () => OK) });
+  assertEqual(QuizCore.parseBoard(text)['speed:science'].length, 5);
 });
 ```
 
-- [ ] **Step 2: 실패하는지 확인한다** — 기대: 새 검사 5개 실패
-- [ ] **Step 3: 구현한다** — 최상위 값이 배열이 아닌 객체일 때만 읽는다. 키는 `BOARD_MODES`만 받고, 값이 배열이 아니면 그 키를 버린다. 항목마다 `normalizeName(name) !== null`, `categoryId`가 `CATEGORIES`의 id, `halfPoints`가 0~20 정수, `date`가 `Date.parse`로 읽히는 문자열인지 확인한다. 항목은 `{ name, categoryId, halfPoints, date }`만 남기고, 표마다 앞의 `BOARD_SIZE`개까지 둔다. 남은 항목이 없는 키는 빈 배열로 두지 않고 결과에서 뺀다.
+- [ ] **Step 2: 실패하는지 확인한다** — 기대: 새 검사 실패
+- [ ] **Step 3: 구현한다** — 최상위 값이 배열이 아닌 객체일 때만 읽는다. 키는 `boardKeys(CATEGORIES)` 8개만 받고, 값이 배열이 아니면 그 키를 버린다. 항목마다 `normalizeName(name) !== null`, `halfPoints`가 0~20 정수, `date`가 `Date.parse`로 읽히는 문자열인지 확인한다. 항목은 `{ name, halfPoints, date }`만 남기고, 표마다 앞의 `BOARD_SIZE`개까지 둔다. 남은 항목이 없는 키는 결과에서 뺀다.
 - [ ] **Step 4: 통과를 확인한다** — 기대: `실패 0`
-- [ ] **Step 5: 커밋한다** — `git commit -am "feat: 이름 정리와 순위표 저장값 검사"`
+- [ ] **Step 5: 커밋한다**
 
 ### Task 14: 기록 추가와 날짜 표시
 
@@ -563,57 +570,56 @@ test('parseBoard: 표마다 앞의 10개까지만', () => {
 
 **Interfaces:**
 - Consumes: `QuizCore.BOARD_SIZE`
-- Produces: `QuizCore.addRecord(board, mode, { name, categoryId, halfPoints, date }) -> { board, rank }`(`rank`는 1~10 또는 `null`, 입력 `board`는 바꾸지 않음), `QuizCore.formatDate(isoString) -> 'YYYY.MM.DD HH:mm'`(로컬 시각)
+- Produces: `QuizCore.addRecord(board, key, { name, halfPoints, date }) -> { board, rank }`(`rank`는 1~5 또는 `null`, 입력 `board`는 바꾸지 않음), `QuizCore.formatDate(isoString) -> 'YYYY-MM-DD'`(로컬 날짜)
 
 - [ ] **Step 1: 실패하는 검사를 쓴다**
 
 ```js
-const rec = (name, halfPoints, categoryId = 'science') => ({ name, categoryId, halfPoints, date: '2026-10-08T05:03:00.000Z' });
-const fullSpeed = () => ({ speed: [20, 19, 18, 17, 16, 15, 14, 13, 12, 11].map((p, i) => rec(`P${i}`, p)) });
-test('addRecord: 빈 표에 이름·카테고리와 함께 1위', () => {
-  const r = QuizCore.addRecord({}, 'speed', rec('민지', 18, 'korean-history'));
-  assertEqual(r, { board: { speed: [rec('민지', 18, 'korean-history')] }, rank: 1 });
+const rec = (name, halfPoints) => ({ name, halfPoints, date: '2026-10-08T05:03:00.000Z' });
+const fullSpeed = () => ({ 'speed:science': [20, 18, 16, 14, 12].map((p, i) => rec(`P${i}`, p)) });
+test('addRecord: 빈 표에 이름과 함께 1위', () => {
+  const r = QuizCore.addRecord({}, 'speed:korean-history', rec('민지', 18));
+  assertEqual(r, { board: { 'speed:korean-history': [rec('민지', 18)] }, rank: 1 });
 });
-test('addRecord: 동점이면 먼저 세운 기록이 위', () => {
-  const r = QuizCore.addRecord({ speed: [rec('A', 18)] }, 'speed', rec('B', 18, 'arts-culture'));
-  assertEqual(r.board.speed.map(x => x.name), ['A', 'B']); assertEqual(r.rank, 2);
+test('addRecord: 동점이면 먼저 저장한 기록이 위', () => {
+  const r = QuizCore.addRecord({ 'speed:science': [rec('A', 18)] }, 'speed:science', rec('B', 18));
+  assertEqual(r.board['speed:science'].map(x => x.name), ['A', 'B']); assertEqual(r.rank, 2);
 });
-test('addRecord: 11번째는 잘리고 다른 모드 표와 입력은 그대로', () => {
-  const full = { ...fullSpeed(), hint: [rec('H', 2)] };
+test('addRecord: 6건째를 넣으면 상위 5건만 남고 다른 표와 입력은 그대로', () => {
+  const full = { ...fullSpeed(), 'hint:science': [rec('H', 2)], 'speed:arts-culture': [rec('S', 4)] };
   const before = JSON.stringify(full);
-  const r = QuizCore.addRecord(full, 'speed', rec('N', 12));
-  assertEqual(r.rank, 10);
-  assertEqual(r.board.speed.map(x => x.halfPoints), [20, 19, 18, 17, 16, 15, 14, 13, 12, 12]);
-  assertEqual(r.board.speed[9].name, 'N');
-  assertEqual(r.board.hint, [rec('H', 2)]); assertEqual(JSON.stringify(full), before);
+  const r = QuizCore.addRecord(full, 'speed:science', rec('N', 15));
+  assertEqual(r.rank, 4);
+  assertEqual(r.board['speed:science'].map(x => x.halfPoints), [20, 18, 16, 15, 14]);
+  assertEqual(r.board['hint:science'], [rec('H', 2)]); assertEqual(r.board['speed:arts-culture'], [rec('S', 4)]);
+  assertEqual(JSON.stringify(full), before);
 });
-test('addRecord: 꽉 찬 표에서 10위와 동점이거나 낮으면 순위권 밖', () => {
+test('addRecord: 꽉 찬 표에서 5위와 동점이거나 낮으면 들어가지 않는다', () => {
   const full = fullSpeed();
-  for (const p of [11, 0]) {
-    const r = QuizCore.addRecord(full, 'speed', rec('N', p));
+  for (const p of [12, 0]) {
+    const r = QuizCore.addRecord(full, 'speed:science', rec('N', p));
     assertEqual(r.rank, null); assertEqual(r.board, full);
   }
 });
-test('formatDate: 로컬 시각', () => {
-  assertEqual(QuizCore.formatDate(new Date(2026, 9, 8, 14, 3).toISOString()), '2026.10.08 14:03');
+test('formatDate: 로컬 날짜', () => {
+  assertEqual(QuizCore.formatDate(new Date(2026, 8, 26, 23, 59).toISOString()), '2026-09-26');
+  assertEqual(QuizCore.formatDate(new Date(2026, 9, 8, 0, 1).toISOString()), '2026-10-08');
 });
 ```
 
-- [ ] **Step 2: 실패하는지 확인한다** — 기대: 새 검사 5개 실패
-- [ ] **Step 3: 구현한다** — 끼워 넣을 위치는 "`board[mode]`의 기존 기록 중 `halfPoints`가 새 기록보다 **작은** 첫 위치"(없으면 맨 끝)다. 그 위치가 `BOARD_SIZE` 이상이면 `{ board: { ...board }, rank: null }`, 아니면 새 배열에 끼워 넣고 `BOARD_SIZE`개로 자른 뒤 `rank = 위치 + 1`.
+- [ ] **Step 2: 실패하는지 확인한다** — 기대: 새 검사 실패
+- [ ] **Step 3: 구현한다** — 끼워 넣을 위치는 "`board[key]`의 기존 기록 중 `halfPoints`가 새 기록보다 **작은** 첫 위치"(없으면 맨 끝)다. 그 위치가 `BOARD_SIZE` 이상이면 `{ board: { ...board }, rank: null }`, 아니면 새 배열에 끼워 넣고 `BOARD_SIZE`개로 자른 뒤 `rank = 위치 + 1`.
 - [ ] **Step 4: 통과를 확인한다** — 기대: `실패 0`
-- [ ] **Step 5: 커밋한다** — `git commit -am "feat: 순위 기록 추가와 날짜 표시"`
+- [ ] **Step 5: 커밋한다**
 
-### Task 15: 저장소와 이름 입력칸
+### Task 15: 저장소
 
 **Files:**
-- Modify: `script.js`, `index.html`, `tests/tests.js`
+- Modify: `script.js`, `tests/tests.js`
 
 **Interfaces:**
-- Consumes: `QuizCore.parseBoard`, `normalizeName`
-- Produces:
-  - `createQuizStore(getStorage)` → `{ loadBoard() -> { board, ok }, saveBoard(board) -> boolean, loadPlayerName() -> string, savePlayerName(name) -> boolean }`. 키는 `quiz.leaderboard.v1`, `quiz.playerName.v1`이다. `getStorage`는 `() => Storage`이고 호출 자체가 예외를 던질 수 있다. 앱에서는 `const store = createQuizStore(() => window.localStorage)`.
-  - 화면 처리: `let board = {}`, `let storageOk = true`(`init`에서 `loadBoard()`로 채움), 마크업 `#name-field`(`<label for="player-name">순위표에 올릴 이름</label>`, `<input id="player-name" maxlength="10">`, `#name-hint`), `game.playerName`
+- Consumes: `QuizCore.parseBoard`
+- Produces: `createQuizStore(getStorage)` → `{ loadBoard() -> { board, ok }, saveBoard(board) -> boolean, loadPlayerName() -> string, savePlayerName(name) -> boolean }`. 키는 `quiz.leaderboard.v1`, `quiz.playerName.v1`이다. `getStorage`는 `() => Storage`이고 호출 자체가 예외를 던질 수 있다. 앱에서는 `const store = createQuizStore(() => window.localStorage)`.
 
 - [ ] **Step 1: 실패하는 검사를 쓴다**
 
@@ -625,7 +631,7 @@ function memoryStorage(init = {}) {
 test('store: 저장하고 다시 읽는다', () => {
   const mem = memoryStorage();
   const s = createQuizStore(() => mem);
-  const b = { speed: [OK] };
+  const b = { 'speed:science': [OK] };
   assert(s.saveBoard(b)); assertEqual(s.loadBoard(), { board: b, ok: true });
   assert(s.savePlayerName('민지')); assertEqual(s.loadPlayerName(), '민지');
 });
@@ -644,25 +650,24 @@ test('store: 쓰기만 실패하면 false', () => {
   assertEqual(s.saveBoard({}), false);
 });
 ```
-- [ ] **Step 2: 실패하는지 확인한다** — 기대: 새 검사 4개 실패
-- [ ] **Step 3: `createQuizStore`를 구현한다** — `QuizCore` 바깥, 화면 처리 위에 둔다. 메서드마다 `getStorage()` 호출부터 `try` 안에서 한다.
-- [ ] **Step 4: 통과를 확인한다** — 기대: `실패 0`
-- [ ] **Step 5: 이름 입력칸을 구현한다** — 화면 순서가 카테고리 → 모드이므로 `#name-field`는 모드 선택 화면의 모드 버튼 위에 둔다(PRD 3.1). `renderModes`에서 값을 마지막 이름(`init`에서 `store.loadPlayerName()`으로 읽은 `lastPlayerName`)으로 미리 채운다. `input` 이벤트마다 `normalizeName`이 `null`이면 스피드·힌트 버튼을 `disabled`로 잠그고 `#name-hint`에 "이름을 입력하면 시작할 수 있습니다"를 보인다. 연습 버튼은 잠그지 않는다. 스피드·힌트 판을 시작할 때 `game.playerName`에 넣고 `store.savePlayerName`을 부른다.
-- [ ] **Step 6: 브라우저로 확인한다** — 아래 3단계 항목 중 "이름 입력" 4개를 확인한다.
-- [ ] **Step 7: 커밋한다** — `git commit -am "feat: 저장소와 이름 입력칸"`
 
-### Task 16: 기록 저장과 결과 화면 순위
+- [ ] **Step 2: 실패하는지 확인한다** — 기대: 새 검사 4개 실패
+- [ ] **Step 3: 구현한다** — `QuizCore` 바깥, 화면 처리 위에 둔다. 메서드마다 `getStorage()` 호출부터 `try` 안에서 한다.
+- [ ] **Step 4: 통과를 확인한다** — 기대: `실패 0`
+- [ ] **Step 5: 커밋한다**
+
+### Task 16: 결과 화면의 이름 입력과 기록 저장
 
 **Files:**
-- Modify: `script.js`, `index.html`
+- Modify: `script.js`, `index.html`, `style.css`
 
 **Interfaces:**
-- Consumes: `QuizCore.addRecord`, `BOARD_SIZE`, `formatScore`, `store`, `board`, `storageOk`, `CATEGORIES`, `MODES`
-- Produces: `recordResult() -> { rank }`, `let lastRecord = null`(`{ mode, rank }`, 순위권 밖이면 `rank: null`), 마크업 `#result-rank`, `#result-storage-warning`, `#btn-board`
+- Consumes: `QuizCore.addRecord`, `boardKey`, `normalizeName`, `store`, `board`
+- Produces: `let board = {}`, `let lastPlayerName = ''`(`init`에서 `store.loadBoard().board`, `store.loadPlayerName()`으로 채움), `game.saved`, `canSave()`, `updateSaveButton()`, `saveRecord()`, 마크업 `#save-form`(`<label for="player-name">이름 (1~10자)</label>`, `<input id="player-name" maxlength="10">`, `<button type="submit" id="btn-save">기록 저장</button>`, `#save-error`)
 
-- [ ] **Step 1: 구현한다** — `showResult()`는 `nextQuestion`의 `phase === 'feedback'` 검사를 거쳐서만 불리므로 판마다 한 번만 실행된다. 이 구조를 유지한다(Review Focus 1). 스피드·힌트이고 `!isRetry`이면 `recordResult()`를 부른다. 이 함수는 `addRecord(board, mode, { name: game.playerName, categoryId: game.categoryId, halfPoints, date: new Date().toISOString() })`로 `board`를 바꾸고, `storageOk = store.saveBoard(board) && storageOk`. `#result-rank`는 10위 안이면 `${name} 님의 이번 기록: ${MODES[mode].name} ${rank}위 (${카테고리 이름})`, 밖이면 `순위권 밖 (10위 점수: ${formatScore(board[mode][BOARD_SIZE - 1].halfPoints)})`이다. 이름이 들어가므로 `textContent`로 넣는다. `!storageOk`이면 경고 문구를 보인다. [순위표]는 3단계부터 항상 보인다.
-- [ ] **Step 2: 브라우저로 확인한다** — 한국사 스피드 판을 끝내면 "OO 님의 이번 기록: 스피드 1위 (한국사)"가 나온다. [결과 보기]를 빠르게 두 번 눌러도 콘솔에서 `JSON.parse(localStorage['quiz.leaderboard.v1']).speed.length`가 1만 늘어난다.
-- [ ] **Step 3: 커밋한다** — `git commit -am "feat: 기록 저장과 결과 화면 순위"`
+- [ ] **Step 1: 구현한다** — `showResult()`에서 스피드·힌트이고 `!isRetry`일 때만 `#save-form`을 점수(`#result-score`) 바로 아래에 보이고, 입력칸을 `lastPlayerName`으로 미리 채운다. `input` 이벤트마다 `normalizeName`이 `null`이면 [기록 저장]을 `disabled`로 잠근다. 폼을 제출하면 `saveRecord()`가 `addRecord(board, boardKey(mode, categoryId), { name, halfPoints, date: new Date().toISOString() })`로 새 표를 만들고 `store.saveBoard`로 저장한다. 성공하면 `board`를 바꾸고 `game.saved = true` 후 순위표 화면으로 간다. 실패하면 `board`는 그대로 두고 `#save-error`("기록을 저장할 수 없음")를 보이며 결과 화면에 머문다. `game.saved`로 두 번 눌러도 한 번만 저장한다(Review Focus 1). 이름을 저장할 때 `store.savePlayerName`도 부른다.
+- [ ] **Step 2: 브라우저로 확인한다** — 아래 3단계 항목 중 "순위표와 저장칸", "기록이 쌓이는 모양"을 확인한다.
+- [ ] **Step 3: 커밋한다**
 
 ### Task 17: 순위표 화면
 
@@ -670,45 +675,32 @@ test('store: 쓰기만 실패하면 false', () => {
 - Modify: `index.html`, `script.js`, `style.css`
 
 **Interfaces:**
-- Consumes: `board`, `storageOk`, `QuizCore.formatDate`, `formatScore`, `lastRecord`, `CATEGORIES`
-- Produces: `openBoard(highlight)`(`highlight`: `{ mode, rank } | null`), `renderBoard()`, 마크업 `#screen-board`(`#board-title`, `#board-speed`, `#board-hint`, `#board-storage-warning`, `#btn-board-home`), 모드 선택 화면의 `#btn-mode-board`
+- Consumes: `board`, `QuizCore.BOARD_MODES`, `boardKey`, `formatDate`, `formatScore`, `CATEGORIES`, `MODES`
+- Produces: `openBoard()`, `renderBoard()`, 마크업 `#screen-board`(`#board-title`, `#board-list`, `#btn-board-home`), 시작 화면의 `#btn-board-open`
 
-- [ ] **Step 1: 구현한다** — 표 두 개(제목 "스피드", "힌트")를 넓은 화면에서 나란히, 좁은 화면에서 위아래로 놓는다(CSS grid, 좁은 쪽 기준 640px). 칸은 순위·이름·카테고리·점수·날짜다. 카테고리는 `CATEGORIES`의 이름으로 보이고, 이름은 `textContent`로 넣는다. 빈 표는 "아직 기록이 없습니다"를 보인다. `highlight`와 같은 모드 표의 `rank`번째 줄에 `.is-highlight`를 준다(`rank`가 `null`이면 강조 없음). 결과 화면 [순위표]는 `openBoard(lastRecord)`, 모드 선택 화면 [순위표]는 `openBoard(null)`이다. 360px에서 다섯 칸이 가로 스크롤 없이 들어가도록 날짜 칸은 줄바꿈을 허용한다.
-- [ ] **Step 2: 브라우저로 확인한다** — 아래 3단계 항목 중 "순위표"와 "저장 실패" 항목을 모두 확인한다.
-- [ ] **Step 3: 커밋한다** — `git commit -am "feat: 순위표 화면"`
+- [ ] **Step 1: 구현한다** — 시작 화면 맨 아래에 [순위표 보기]를 둔다. 순위표 화면은 스피드 · 한국사부터 힌트 · 예술과 문화까지 표 8개를 위에서 아래로 놓고, 표마다 "스피드 · 한국사" 같은 제목을 붙인다. 칸은 순위·이름·점수·날짜이고, 이름은 `textContent`로 넣는다. 빈 표는 "기록 없음"을 보인다. [처음으로]는 시작 화면으로 간다. 360px에서 이름 입력칸과 표가 가로 스크롤 없이 들어가야 한다.
+- [ ] **Step 2: 브라우저로 확인한다** — 아래 3단계 항목 중 "저장이 안 될 때", "안전과 화면 폭"을 확인한다.
+- [ ] **Step 3: 커밋한다**
 
 ## 3단계 브라우저에서 직접 확인할 항목
 
-시작하기 전에 F12 → Application → Local Storage에서 `quiz.`로 시작하는 키를 지워 둔다. 표를 꽉 채운 상태는 콘솔에서 아래처럼 만든 뒤 새로고침해서 준비해도 된다(10위 점수 5.5).
+노션 5.6.2의 확인 항목 11개와 같다. 시작하기 전에 F12 → Application → Local Storage에서 `quiz.`로 시작하는 키를 지워 둔다.
 
-```js
-localStorage.setItem('quiz.leaderboard.v1', JSON.stringify({ speed: Array.from({ length: 10 }, (_, i) =>
-  ({ name: 'P' + i, categoryId: 'science', halfPoints: 20 - i, date: new Date().toISOString() })) }));
-```
+**순위표와 저장칸 (3)**
+- [ ] 시작 화면 맨 아래에 [순위표 보기]가 있고, 누르면 표 8개가 모두 "기록 없음"이다.
+- [ ] 연습 모드 결과 화면에는 이름 입력칸과 [기록 저장]이 없다.
+- [ ] 스피드·힌트 모드 결과 화면에는 점수 바로 아래에 이름 입력칸과 [기록 저장]이 있다. 이름이 비어 있거나 공백뿐이면 [기록 저장]이 눌리지 않고, 10자를 넘는 부분은 입력되지 않는다.
 
-**공통**
-- [ ] `tests/test.html`이 `실패 0`이다.
-- [ ] 모드 선택 화면과 결과 화면에 [순위표] 버튼이 있다.
+**기록이 쌓이는 모양 (4)**
+- [ ] 이름을 넣고 [기록 저장]을 누르면 순위표 화면으로 가고, 그 판의 모드·카테고리 표에 순위, 이름, 점수, 날짜가 들어간다.
+- [ ] 힌트 모드는 7.5 같은 점수가 그대로 보인다.
+- [ ] 같은 카테고리·같은 모드로 6판을 풀어 판마다 저장하면, 그 표에 5건만 남고 가장 낮은 점수의 기록이 빠진다. 판마다 맞히는 문항 수를 달리하면 알아보기 쉽다.
+- [ ] 새로고침하거나 브라우저를 닫았다 열어도 기록이 남아 있다.
 
-**이름 입력**
-- [ ] 모드 선택 화면에 "순위표에 올릴 이름" 칸이 모드 버튼 위에 있다. 라벨을 누르면 입력칸에 초점이 간다.
-- [ ] 이름이 비어 있거나 공백뿐이면 스피드·힌트 버튼이 잠기고 "이름을 입력하면 시작할 수 있습니다"가 보인다. 연습 버튼은 잠기지 않는다. 글자를 넣으면 풀린다.
-- [ ] 11번째 글자는 입력되지 않는다.
-- [ ] 이름을 넣고 한 판을 시작한 뒤 새로고침(F5)하면, 그 이름이 미리 채워져 있다.
+**저장이 안 될 때 (2)**
+- [ ] 기록이 한 건 이상 있는 상태에서 콘솔에 `localStorage.setItem("quiz.leaderboard.v1", "{깨짐")`을 입력하고 새로고침 → 순위표를 열면 표 8개가 모두 "기록 없음"이고 콘솔 오류가 없다. (앞서 쌓은 기록은 사라진다.)
+- [ ] 콘솔에 `Storage.prototype.setItem = () => { throw new Error("막힘"); }`을 입력하고, 새로고침하지 않은 채 스피드 모드 한 판을 끝낸 뒤 저장 → "기록을 저장할 수 없음"이 나오고 결과 화면에 머문다. [처음으로]를 누르면 게임을 이어 할 수 있다. 확인이 끝나면 새로고침한다.
 
-**기록과 결과 화면**
-- [ ] 스피드 판을 끝까지 풀면 결과에 "OO 님의 이번 기록: 스피드 N위 (카테고리)"가 나온다. 힌트 판도 똑같이 확인한다.
-- [ ] 새로고침한 뒤 순위표를 열어도 그 기록이 남아 있다.
-- [ ] 스피드 표가 10개로 꽉 찬 상태에서 10위보다 낮거나 같은 점수를 내면 "순위권 밖 (10위 점수: N)"이 나오고 표는 그대로다. 10위보다 높은 점수를 내면 표에 들어가고 표는 10개를 유지한다.
-- [ ] 연습 모드 판, 다시 풀기 판, [그만두기]로 끝낸 스피드·힌트 판은 순위표에 기록되지 않는다.
-- [ ] 이름을 `<b>테스트</b>`로 하고 판을 끝내면, 결과 화면과 순위표에 굵은 글씨가 아니라 `<b>테스트</b>` 글자 그대로 보인다.
-
-**순위표**
-- [ ] 스피드 표와 힌트 표가 따로 있고, 카테고리 탭과 [기록 지우기]는 없다. 360px에서는 두 표가 위아래로 놓이고 가로 스크롤이 없다.
-- [ ] 칸이 순위·이름·카테고리·점수·날짜다. 서로 다른 카테고리의 판이 같은 모드 표에 섞여 나오고, 줄마다 카테고리 이름(`한국사` 등)이 보인다. 날짜는 `2026.10.08 14:03` 형식의 내 컴퓨터 시각이고, 점수는 `7.5`처럼 나온다.
-- [ ] 기록이 없는 표에는 "아직 기록이 없습니다"가 보인다.
-- [ ] 결과 화면에서 [순위표]로 오면 방금 세운 기록 줄이 강조되어 있다. 순위권 밖이었거나 모드 선택 화면에서 열었으면 강조가 없다.
-
-**저장 실패와 깨진 값**
-- [ ] 콘솔에서 `localStorage.setItem('quiz.leaderboard.v1', '{broken')` 후 새로고침 → 순위표가 빈 표로 열리고 오류가 나지 않는다. 한 판을 끝내면 정상으로 저장된다.
-- [ ] Chrome `chrome://settings/content/siteData`에서 "사이트에서 기기에 데이터를 저장하도록 허용하지 않음"으로 바꾸고 새로고침 → 게임이 끝까지 동작하고, 결과 화면과 순위표 화면에 "이 브라우저에서는 기록을 저장할 수 없습니다"가 보인다. 콘솔에 잡히지 않은 오류가 없다. **확인한 뒤 설정을 원래대로 돌린다.**
+**안전과 화면 폭 (2)**
+- [ ] 이름에 `<b>굵게</b>`를 넣어 저장해도 순위표에 굵게 보이지 않고 글자 그대로 보인다.
+- [ ] 폭 360px에서 순위표와 이름 입력칸이 가로 스크롤 없이 보인다.
