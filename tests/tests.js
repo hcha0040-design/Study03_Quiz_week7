@@ -143,6 +143,95 @@ test('resultLabel: 시간 초과 / 힌트 정답 / 정답 / 오답', () => {
   assertEqual(QuizCore.resultLabel({ correct: false, usedHint: true, timedOut: false }), '오답');
 });
 
+// ===== 3단계: 이름과 저장값 검사 =====
+test('normalizeName', () => {
+  assertEqual(QuizCore.normalizeName('  민지 '), '민지');
+  assertEqual(['', '   ', '가'.repeat(11), null].map(QuizCore.normalizeName), [null, null, null, null]);
+  assertEqual(QuizCore.normalizeName('가'.repeat(10)), '가'.repeat(10));
+});
+test('boardKey와 표 8개', () => {
+  assertEqual(QuizCore.boardKey('speed', 'science'), 'speed:science');
+  assertEqual(QuizCore.boardKeys(CATEGORIES).length, 8);
+  assertEqual(QuizCore.boardKeys(CATEGORIES).slice(0, 2), ['speed:korean-history', 'speed:world-geography']);
+  assertEqual(QuizCore.boardKeys(CATEGORIES)[4], 'hint:korean-history');
+});
+const OK = { name: '민지', halfPoints: 18, date: '2026-10-08T05:03:00.000Z' };
+test('parseBoard: 깨진 값은 빈 표', () => {
+  for (const t of ['{broken', '{깨짐', null, 'null', '[]', '"x"', '3']) assertEqual(QuizCore.parseBoard(t), {}, String(t));
+});
+test('parseBoard: 형식이 맞는 항목만 살린다', () => {
+  const text = JSON.stringify({ 'speed:science': [OK, { ...OK, name: undefined }, { ...OK, name: '가'.repeat(11) }, { ...OK, name: '' },
+    { ...OK, halfPoints: 1.5 }, { ...OK, halfPoints: 21 }, { ...OK, date: 'x' }, null] });
+  assertEqual(QuizCore.parseBoard(text), { 'speed:science': [OK] });
+});
+test('parseBoard: 모르는 키와 배열 아닌 값은 그 키만 버린다', () => {
+  const text = JSON.stringify({ 'hint:science': [OK], speed: [OK], 'practice:science': [OK], 'speed:music': [OK], 'science:speed': [OK], 'speed:korean-history': 'x' });
+  assertEqual(QuizCore.parseBoard(text), { 'hint:science': [OK] });
+});
+test('parseBoard: 표마다 앞의 5개까지만', () => {
+  const text = JSON.stringify({ 'speed:science': Array.from({ length: 7 }, () => OK) });
+  assertEqual(QuizCore.parseBoard(text)['speed:science'].length, 5);
+});
+
+// ===== 3단계: 기록 추가와 날짜 =====
+const rec = (name, halfPoints) => ({ name, halfPoints, date: '2026-10-08T05:03:00.000Z' });
+const fullSpeed = () => ({ 'speed:science': [20, 18, 16, 14, 12].map((p, i) => rec(`P${i}`, p)) });
+test('addRecord: 빈 표에 이름과 함께 1위', () => {
+  const r = QuizCore.addRecord({}, 'speed:korean-history', rec('민지', 18));
+  assertEqual(r, { board: { 'speed:korean-history': [rec('민지', 18)] }, rank: 1 });
+});
+test('addRecord: 동점이면 먼저 저장한 기록이 위', () => {
+  const r = QuizCore.addRecord({ 'speed:science': [rec('A', 18)] }, 'speed:science', rec('B', 18));
+  assertEqual(r.board['speed:science'].map(x => x.name), ['A', 'B']); assertEqual(r.rank, 2);
+});
+test('addRecord: 6건째를 넣으면 상위 5건만 남고 다른 표와 입력은 그대로', () => {
+  const full = { ...fullSpeed(), 'hint:science': [rec('H', 2)], 'speed:arts-culture': [rec('S', 4)] };
+  const before = JSON.stringify(full);
+  const r = QuizCore.addRecord(full, 'speed:science', rec('N', 15));
+  assertEqual(r.rank, 4);
+  assertEqual(r.board['speed:science'].map(x => x.halfPoints), [20, 18, 16, 15, 14]);
+  assertEqual(r.board['hint:science'], [rec('H', 2)]); assertEqual(r.board['speed:arts-culture'], [rec('S', 4)]);
+  assertEqual(JSON.stringify(full), before);
+});
+test('addRecord: 꽉 찬 표에서 5위와 동점이거나 낮으면 들어가지 않는다', () => {
+  const full = fullSpeed();
+  for (const p of [12, 0]) {
+    const r = QuizCore.addRecord(full, 'speed:science', rec('N', p));
+    assertEqual(r.rank, null); assertEqual(r.board, full);
+  }
+});
+test('formatDate: 로컬 날짜', () => {
+  assertEqual(QuizCore.formatDate(new Date(2026, 8, 26, 23, 59).toISOString()), '2026-09-26');
+  assertEqual(QuizCore.formatDate(new Date(2026, 9, 8, 0, 1).toISOString()), '2026-10-08');
+});
+
+// ===== 3단계: 저장소 =====
+function memoryStorage(init = {}) {
+  const m = new Map(Object.entries(init));
+  return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
+}
+test('store: 저장하고 다시 읽는다', () => {
+  const mem = memoryStorage();
+  const s = createQuizStore(() => mem);
+  const b = { 'speed:science': [OK] };
+  assert(s.saveBoard(b)); assertEqual(s.loadBoard(), { board: b, ok: true });
+  assert(s.savePlayerName('민지')); assertEqual(s.loadPlayerName(), '민지');
+});
+test('store: localStorage가 막혀도 예외 없이 실패를 알린다', () => {
+  const s = createQuizStore(() => { throw new Error('SecurityError'); });
+  assertEqual(s.loadBoard(), { board: {}, ok: false });
+  assertEqual([s.saveBoard({}), s.savePlayerName('a')], [false, false]);
+  assertEqual(s.loadPlayerName(), '');
+});
+test('store: 깨진 값은 빈 표, 저장은 가능', () => {
+  const s = createQuizStore(() => memoryStorage({ 'quiz.leaderboard.v1': '{broken' }));
+  assertEqual(s.loadBoard(), { board: {}, ok: true });
+});
+test('store: 쓰기만 실패하면 false', () => {
+  const s = createQuizStore(() => ({ ...memoryStorage(), setItem() { throw new Error('QuotaExceeded'); } }));
+  assertEqual(s.saveBoard({}), false);
+});
+
 // ===== 결과 표시 =====
 window.addEventListener('load', () => {
   const passed = results.filter(r => r.ok).length;

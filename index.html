@@ -12,6 +12,9 @@
       <p id="student-info">학번 2601986 이름 차혜진</p>
       <h1 id="start-title" tabindex="-1">상식 퀴즈</h1>
       <div id="category-list"></div>
+      <div class="actions">
+        <button type="button" id="btn-board-open">순위표 보기</button>
+      </div>
     </section>
 
     <section class="screen" id="screen-mode" hidden>
@@ -42,6 +45,14 @@
     <section class="screen" id="screen-result" hidden>
       <h2 id="result-title" tabindex="-1">결과</h2>
       <p id="result-score"></p>
+      <form id="save-form" hidden>
+        <label for="player-name">이름 (1~10자)</label>
+        <div class="save-row">
+          <input type="text" id="player-name" maxlength="10" autocomplete="nickname">
+          <button type="submit" id="btn-save" disabled>기록 저장</button>
+        </div>
+        <p id="save-error" class="storage-warning" role="alert" hidden>기록을 저장할 수 없음</p>
+      </form>
       <p id="result-correct"></p>
       <p id="result-hints" hidden></p>
       <p id="result-norecord" hidden>순위표에 기록되지 않음</p>
@@ -50,6 +61,14 @@
         <button type="button" id="btn-retry" hidden>틀린 문제 다시 풀기</button>
         <button type="button" id="btn-again">같은 모드 다시</button>
         <button type="button" id="btn-home">처음으로</button>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-board" hidden>
+      <h2 id="board-title" tabindex="-1">순위표</h2>
+      <div id="board-list"></div>
+      <div class="actions">
+        <button type="button" id="btn-board-home">처음으로</button>
       </div>
     </section>
   </main>
