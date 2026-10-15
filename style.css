@@ -83,6 +83,35 @@ button:disabled {
   color: #4b5563;
 }
 
+#name-field label {
+  display: block;
+  font-weight: 700;
+}
+
+#player-name {
+  font: inherit;
+  width: 100%;
+  max-width: 20rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #9ca3af;
+  border-radius: 0.5rem;
+}
+
+#player-name:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+#name-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: #b91c1c;
+}
+
+#mode-list button:disabled {
+  opacity: .5;
+}
+
 .mode-name,
 .mode-rule {
   display: block;

@@ -199,6 +199,33 @@ test('formatDate: 로컬 시각', () => {
   assertEqual(QuizCore.formatDate(new Date(2026, 9, 8, 14, 3).toISOString()), '2026.10.08 14:03');
 });
 
+// ===== 3단계: 저장소 =====
+function memoryStorage(init = {}) {
+  const m = new Map(Object.entries(init));
+  return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
+}
+test('store: 저장하고 다시 읽는다', () => {
+  const mem = memoryStorage();
+  const s = createQuizStore(() => mem);
+  const b = { speed: [OK] };
+  assert(s.saveBoard(b)); assertEqual(s.loadBoard(), { board: b, ok: true });
+  assert(s.savePlayerName('민지')); assertEqual(s.loadPlayerName(), '민지');
+});
+test('store: localStorage가 막혀도 예외 없이 실패를 알린다', () => {
+  const s = createQuizStore(() => { throw new Error('SecurityError'); });
+  assertEqual(s.loadBoard(), { board: {}, ok: false });
+  assertEqual([s.saveBoard({}), s.savePlayerName('a')], [false, false]);
+  assertEqual(s.loadPlayerName(), '');
+});
+test('store: 깨진 값은 빈 표, 저장은 가능', () => {
+  const s = createQuizStore(() => memoryStorage({ 'quiz.leaderboard.v1': '{broken' }));
+  assertEqual(s.loadBoard(), { board: {}, ok: true });
+});
+test('store: 쓰기만 실패하면 false', () => {
+  const s = createQuizStore(() => ({ ...memoryStorage(), setItem() { throw new Error('QuotaExceeded'); } }));
+  assertEqual(s.saveBoard({}), false);
+});
+
 // ===== 결과 표시 =====
 window.addEventListener('load', () => {
   const passed = results.filter(r => r.ok).length;

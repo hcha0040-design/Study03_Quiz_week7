@@ -501,7 +501,7 @@ test('remainingSeconds / isTimedOut 경계값', () => {
 
 - 3단계 `QuizCore`: `normalizeName`, `parseBoard`, `addRecord`, 그리고 날짜 표시용 `formatDate`
 - `createQuizStore(getStorage)`: localStorage 읽기·쓰기를 `try/catch`로 감싼 저장소
-- 스피드·힌트 시작 화면의 이름 입력칸(마지막 이름 미리 채우기, 비어 있으면 카테고리 잠금)
+- 모드 선택 화면의 이름 입력칸(마지막 이름 미리 채우기, 비어 있으면 스피드·힌트 버튼 잠금)
 - 판이 끝나면 기록 저장, 결과 화면의 순위 또는 "순위권 밖" 표시
 - 순위표 화면(모드별 표 2개 — 스피드, 힌트 — 표마다 상위 10개, 칸에 카테고리, 방금 세운 기록 강조, [처음으로])
 - 저장할 수 없는 브라우저와 깨진 저장값 처리
@@ -647,7 +647,7 @@ test('store: 쓰기만 실패하면 false', () => {
 - [ ] **Step 2: 실패하는지 확인한다** — 기대: 새 검사 4개 실패
 - [ ] **Step 3: `createQuizStore`를 구현한다** — `QuizCore` 바깥, 화면 처리 위에 둔다. 메서드마다 `getStorage()` 호출부터 `try` 안에서 한다.
 - [ ] **Step 4: 통과를 확인한다** — 기대: `실패 0`
-- [ ] **Step 5: 이름 입력칸을 구현한다** — `renderStart`에서 스피드·힌트일 때만 `#name-field`를 카테고리 버튼 위에 보이고, 값을 `store.loadPlayerName()`으로 미리 채운다. `input` 이벤트마다 `normalizeName`이 `null`이면 카테고리 버튼을 `disabled`로 잠그고 `#name-hint`에 "이름을 입력하면 시작할 수 있습니다"를 보인다. 판을 시작할 때 `game.playerName`에 넣고 `store.savePlayerName`을 부른다.
+- [ ] **Step 5: 이름 입력칸을 구현한다** — 화면 순서가 카테고리 → 모드이므로 `#name-field`는 모드 선택 화면의 모드 버튼 위에 둔다(PRD 3.1). `renderModes`에서 값을 마지막 이름(`init`에서 `store.loadPlayerName()`으로 읽은 `lastPlayerName`)으로 미리 채운다. `input` 이벤트마다 `normalizeName`이 `null`이면 스피드·힌트 버튼을 `disabled`로 잠그고 `#name-hint`에 "이름을 입력하면 시작할 수 있습니다"를 보인다. 연습 버튼은 잠그지 않는다. 스피드·힌트 판을 시작할 때 `game.playerName`에 넣고 `store.savePlayerName`을 부른다.
 - [ ] **Step 6: 브라우저로 확인한다** — 아래 3단계 항목 중 "이름 입력" 4개를 확인한다.
 - [ ] **Step 7: 커밋한다** — `git commit -am "feat: 저장소와 이름 입력칸"`
 
@@ -691,8 +691,8 @@ localStorage.setItem('quiz.leaderboard.v1', JSON.stringify({ speed: Array.from({
 - [ ] 모드 선택 화면과 결과 화면에 [순위표] 버튼이 있다.
 
 **이름 입력**
-- [ ] 스피드·힌트 시작 화면에는 "순위표에 올릴 이름" 칸이 카테고리 버튼 위에 있고, 연습 모드에는 없다. 라벨을 누르면 입력칸에 초점이 간다.
-- [ ] 이름이 비어 있거나 공백뿐이면 카테고리 버튼이 잠기고 "이름을 입력하면 시작할 수 있습니다"가 보인다. 글자를 넣으면 풀린다.
+- [ ] 모드 선택 화면에 "순위표에 올릴 이름" 칸이 모드 버튼 위에 있다. 라벨을 누르면 입력칸에 초점이 간다.
+- [ ] 이름이 비어 있거나 공백뿐이면 스피드·힌트 버튼이 잠기고 "이름을 입력하면 시작할 수 있습니다"가 보인다. 연습 버튼은 잠기지 않는다. 글자를 넣으면 풀린다.
 - [ ] 11번째 글자는 입력되지 않는다.
 - [ ] 이름을 넣고 한 판을 시작한 뒤 새로고침(F5)하면, 그 이름이 미리 채워져 있다.
 

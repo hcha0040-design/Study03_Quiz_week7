@@ -228,6 +228,49 @@ const QuizCore = {
 };
 
 // ===================================================================
+// 저장소: localStorage 읽기·쓰기. getStorage() 호출부터 try 안에서 하므로 막힌 브라우저에서도 던지지 않는다.
+// ===================================================================
+
+function createQuizStore(getStorage) {
+  const BOARD_KEY = 'quiz.leaderboard.v1';
+  const NAME_KEY = 'quiz.playerName.v1';
+  return {
+    // ok가 false면 저장소를 쓸 수 없는 브라우저다. 깨진 값은 빈 표로 읽고 ok는 true다.
+    loadBoard() {
+      try {
+        return { board: QuizCore.parseBoard(getStorage().getItem(BOARD_KEY)), ok: true };
+      } catch (e) {
+        return { board: {}, ok: false };
+      }
+    },
+    saveBoard(board) {
+      try {
+        getStorage().setItem(BOARD_KEY, JSON.stringify(board));
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+    loadPlayerName() {
+      try {
+        const name = getStorage().getItem(NAME_KEY);
+        return typeof name === 'string' ? name : '';
+      } catch (e) {
+        return '';
+      }
+    },
+    savePlayerName(name) {
+      try {
+        getStorage().setItem(NAME_KEY, name);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+  };
+}
+
+// ===================================================================
 // 화면 처리 (DOM 사용). #app이 있을 때만 시작한다.
 // ===================================================================
 
@@ -237,9 +280,15 @@ const MODES = {
   hint: { name: '힌트', rule: '문항마다 힌트 1번(오답 2개 제거), 힌트를 쓰고 맞히면 0.5점' },
 };
 
+const store = createQuizStore(() => window.localStorage);
+
 let selectedCategory = null;
 let game = null;
 let timerId = null;
+let board = {};
+let storageOk = true;
+// 마지막으로 쓴 이름. 저장이 막혀도 이번 접속 동안은 기억한다.
+let lastPlayerName = '';
 
 function el(id) {
   return document.getElementById(id);
@@ -288,6 +337,18 @@ function renderModes() {
     }
     list.appendChild(btn);
   });
+
+  el('player-name').value = lastPlayerName;
+  updateNameLock();
+}
+
+// 이름이 비었거나 공백뿐이면 순위표에 오르는 스피드·힌트 버튼만 잠근다. 연습은 이름 없이 시작한다.
+function updateNameLock() {
+  const locked = QuizCore.normalizeName(el('player-name').value) === null;
+  el('mode-list').querySelectorAll('[data-mode]').forEach((btn) => {
+    if (btn.dataset.mode !== 'practice') btn.disabled = locked;
+  });
+  el('name-hint').hidden = !locked;
 }
 
 function renderStart() {
@@ -305,13 +366,15 @@ function renderStart() {
 // ---- 문제 화면 ----
 
 // keptScore: 다시 풀기 판에서 그대로 보여 줄 처음 판의 점수 { halfPoints, count }. 일반 판은 null.
-function startGame({ mode, categoryId, questionList, isRetry, keptScore = null }) {
+// playerName: 스피드·힌트 판에서 순위표에 올릴 이름. 연습 판은 null.
+function startGame({ mode, categoryId, questionList, isRetry, keptScore = null, playerName = null }) {
   stopTimer();
   game = {
     mode,
     categoryId,
     isRetry,
     keptScore,
+    playerName,
     items: QuizCore.prepareItems(questionList, Math.random),
     index: 0,
     phase: 'answering',
@@ -536,14 +599,24 @@ function init() {
     showScreen('mode');
   });
   el('btn-back').addEventListener('click', goHome);
+  el('player-name').addEventListener('input', updateNameLock);
   el('mode-list').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-mode]');
-    if (!btn || !selectedCategory) return;
+    if (!btn || btn.disabled || !selectedCategory) return;
+    const mode = btn.dataset.mode;
+    let playerName = null;
+    if (mode !== 'practice') {
+      playerName = QuizCore.normalizeName(el('player-name').value);
+      if (playerName === null) return;
+      lastPlayerName = playerName;
+      store.savePlayerName(playerName);
+    }
     startGame({
-      mode: btn.dataset.mode,
+      mode,
       categoryId: selectedCategory,
       questionList: QuizCore.questionsByCategory(QUESTIONS, selectedCategory),
       isRetry: false,
+      playerName,
     });
   });
   el('choice-list').addEventListener('click', (e) => {
@@ -587,9 +660,15 @@ function init() {
       categoryId: game.categoryId,
       questionList: QuizCore.questionsByCategory(QUESTIONS, game.categoryId),
       isRetry: false,
+      playerName: game.playerName,
     });
   });
   el('btn-home').addEventListener('click', goHome);
+
+  const loaded = store.loadBoard();
+  board = loaded.board;
+  storageOk = loaded.ok;
+  lastPlayerName = store.loadPlayerName();
   goHome();
 }
 
