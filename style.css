@@ -193,6 +193,15 @@ button:disabled {
   color: #b91c1c;
 }
 
+#result-rank {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.storage-warning {
+  color: #b91c1c;
+}
+
 #btn-hint:disabled {
   opacity: .5;
 }

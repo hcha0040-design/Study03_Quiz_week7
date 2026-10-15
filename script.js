@@ -289,6 +289,8 @@ let board = {};
 let storageOk = true;
 // 마지막으로 쓴 이름. 저장이 막혀도 이번 접속 동안은 기억한다.
 let lastPlayerName = '';
+// 방금 끝낸 판의 기록 { mode, rank }. 순위권 밖이면 rank는 null, 기록하지 않은 판이면 lastRecord가 null.
+let lastRecord = null;
 
 function el(id) {
   return document.getElementById(id);
@@ -567,7 +569,35 @@ function showResult() {
   // 다시 풀기는 연습 모드에서 틀린 문항이 있을 때만(스피드·힌트는 하지 않음).
   el('btn-retry').hidden = !(game.mode === 'practice' && QuizCore.wrongQuestionIds(game.results).length > 0);
 
+  // showResult는 phase가 'feedback'일 때만 불리므로 판마다 한 번만 기록된다.
+  lastRecord = null;
+  el('result-rank').hidden = true;
+  if (game.mode !== 'practice' && !game.isRetry) {
+    const { rank } = recordResult();
+    lastRecord = { mode: game.mode, rank };
+    const category = CATEGORIES.find((c) => c.id === game.categoryId);
+    // 이름은 사용자가 입력한 값이므로 textContent로 넣는다.
+    el('result-rank').textContent = rank !== null
+      ? `${game.playerName} 님의 이번 기록: ${MODES[game.mode].name} ${rank}위 (${category ? category.name : ''})`
+      : `순위권 밖 (10위 점수: ${QuizCore.formatScore(board[game.mode][QuizCore.BOARD_SIZE - 1].halfPoints)})`;
+    el('result-rank').hidden = false;
+  }
+  el('result-storage-warning').hidden = storageOk;
+
   showScreen('result');
+}
+
+// 이번 판을 순위표에 넣고 저장한다. 저장이 한 번이라도 실패하면 storageOk는 false로 남는다.
+function recordResult() {
+  const { board: next, rank } = QuizCore.addRecord(board, game.mode, {
+    name: game.playerName,
+    categoryId: game.categoryId,
+    halfPoints: totalHalfPoints(),
+    date: new Date().toISOString(),
+  });
+  board = next;
+  storageOk = store.saveBoard(board) && storageOk;
+  return { rank };
 }
 
 // 문항마다 "문제 — 판정" 한 줄. 문제 글은 textContent로 넣는다.
