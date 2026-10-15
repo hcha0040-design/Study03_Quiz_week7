@@ -70,6 +70,44 @@ const QuizCore = {
     return nowMs - startMs >= QuizCore.SPEED_LIMIT_MS;
   },
 
+  // 순위표를 두는 모드와 표마다 남길 기록 수.
+  BOARD_MODES: ['speed', 'hint'],
+  BOARD_SIZE: 10,
+
+  // 앞뒤 공백을 뺀 이름. 1~10자가 아니거나 문자열이 아니면 null.
+  normalizeName(text) {
+    if (typeof text !== 'string') return null;
+    const name = text.trim();
+    return name.length >= 1 && name.length <= 10 ? name : null;
+  },
+
+  // 저장된 순위표 문자열을 읽는다. 깨진 값은 빈 표로, 모르는 키·배열이 아닌 값·형식이 틀린 기록은 그것만 버린다.
+  parseBoard(text) {
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return {};
+    }
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) return {};
+
+    const categoryIds = CATEGORIES.map(c => c.id);
+    const isRecord = r => r !== null && typeof r === 'object'
+      && QuizCore.normalizeName(r.name) !== null
+      && categoryIds.includes(r.categoryId)
+      && Number.isInteger(r.halfPoints) && r.halfPoints >= 0 && r.halfPoints <= 20
+      && typeof r.date === 'string' && !Number.isNaN(Date.parse(r.date));
+
+    const board = {};
+    for (const mode of QuizCore.BOARD_MODES) {
+      if (!Array.isArray(data[mode])) continue;
+      const records = data[mode].filter(isRecord).slice(0, QuizCore.BOARD_SIZE)
+        .map(r => ({ name: QuizCore.normalizeName(r.name), categoryId: r.categoryId, halfPoints: r.halfPoints, date: r.date }));
+      if (records.length > 0) board[mode] = records;
+    }
+    return board;
+  },
+
   // 문항 데이터 검사(PRD 5.2, 7.1). 오류 메시지 배열을 돌려주고, 문제가 없으면 빈 배열이다.
   // 잘못된 모양의 항목이 있어도 던지지 않고 메시지로 알린다.
   validateQuestions(questions, categories) {

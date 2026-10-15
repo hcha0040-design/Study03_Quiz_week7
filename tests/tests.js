@@ -143,6 +143,31 @@ test('resultLabel: 시간 초과 / 힌트 정답 / 정답 / 오답', () => {
   assertEqual(QuizCore.resultLabel({ correct: false, usedHint: true, timedOut: false }), '오답');
 });
 
+// ===== 3단계: 이름과 저장값 검사 =====
+test('normalizeName', () => {
+  assertEqual(QuizCore.normalizeName('  민지 '), '민지');
+  assertEqual(['', '   ', '가'.repeat(11), null].map(QuizCore.normalizeName), [null, null, null, null]);
+  assertEqual(QuizCore.normalizeName('가'.repeat(10)), '가'.repeat(10));
+});
+const OK = { name: '민지', categoryId: 'science', halfPoints: 18, date: '2026-10-08T05:03:00.000Z' };
+test('parseBoard: 깨진 값은 빈 표', () => {
+  for (const t of ['{broken', null, 'null', '[]', '"x"', '3']) assertEqual(QuizCore.parseBoard(t), {}, String(t));
+});
+test('parseBoard: 형식이 맞는 항목만 살린다', () => {
+  const text = JSON.stringify({ speed: [OK, { ...OK, name: undefined }, { ...OK, name: '가'.repeat(11) }, { ...OK, name: '' },
+    { ...OK, categoryId: undefined }, { ...OK, categoryId: 'music' }, { ...OK, halfPoints: 1.5 }, { ...OK, halfPoints: 21 },
+    { ...OK, date: 'x' }] });
+  assertEqual(QuizCore.parseBoard(text), { speed: [OK] });
+});
+test('parseBoard: 모르는 키와 배열 아닌 값은 그 키만 버린다', () => {
+  const text = JSON.stringify({ hint: [OK], practice: [OK], 'science:speed': [OK], speed: 'x' });
+  assertEqual(QuizCore.parseBoard(text), { hint: [OK] });
+});
+test('parseBoard: 표마다 앞의 10개까지만', () => {
+  const text = JSON.stringify({ speed: Array.from({ length: 12 }, () => OK) });
+  assertEqual(QuizCore.parseBoard(text).speed.length, 10);
+});
+
 // ===== 결과 표시 =====
 window.addEventListener('load', () => {
   const passed = results.filter(r => r.ok).length;
